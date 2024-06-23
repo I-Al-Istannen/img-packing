@@ -13,6 +13,7 @@ pub struct ImageToPack {
     pub width: u32,
     pub height: u32,
     pub margin: u32,
+    pub allow_rotation: bool,
 }
 impl ImageToPack {
     pub fn from_file_or_folder(
@@ -20,18 +21,25 @@ impl ImageToPack {
         max_width: Option<u32>,
         max_height: Option<u32>,
         margin: u32,
+        allow_rotation: bool,
     ) -> anyhow::Result<Vec<Self>> {
         if path.is_dir() {
             std::fs::read_dir(path)?
                 .map(|entry| {
                     let entry = entry?;
                     let path = entry.path();
-                    Self::from_path(path.clone(), max_width, max_height, margin)
+                    Self::from_path(path.clone(), max_width, max_height, margin, allow_rotation)
                         .context(format!("Failed to load image from path {:?}", path))
                 })
                 .collect()
         } else {
-            Ok(vec![Self::from_path(path, max_width, max_height, margin)?])
+            Ok(vec![Self::from_path(
+                path,
+                max_width,
+                max_height,
+                margin,
+                allow_rotation,
+            )?])
         }
     }
 
@@ -40,6 +48,7 @@ impl ImageToPack {
         max_width: Option<u32>,
         max_height: Option<u32>,
         margin: u32,
+        allow_rotation: bool,
     ) -> anyhow::Result<Self> {
         let mut dynamic_image = ImageReader::open(&path)?.decode()?;
 
@@ -58,6 +67,7 @@ impl ImageToPack {
             width: width + 2 * margin,
             height: height + 2 * margin,
             margin,
+            allow_rotation,
         })
     }
 
@@ -75,6 +85,17 @@ impl From<ImageToPack> for Item<ImageToPack> {
     fn from(value: ImageToPack) -> Self {
         let width = value.width as usize;
         let height = value.height as usize;
-        Self::new(value, width, height, Rotation::Allowed)
+        let allow_rotation = value.allow_rotation;
+
+        Self::new(
+            value,
+            width,
+            height,
+            if allow_rotation {
+                Rotation::Allowed
+            } else {
+                Rotation::None
+            },
+        )
     }
 }

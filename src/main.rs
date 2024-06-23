@@ -58,12 +58,16 @@ pub struct Arguments {
     margin_mm: Mm,
 
     /// The maximum width an image may have in mm
-    #[arg(long = "max-image-width", value_name = "width", value_parser = parse_mm)]
+    #[arg(long, value_name = "width", value_parser = parse_mm)]
     max_image_width: Option<Mm>,
 
     /// The maximum height an image may have in mm
-    #[arg(long = "max-image-height", value_name = "height", value_parser = parse_mm)]
+    #[arg(long, value_name = "height", value_parser = parse_mm)]
     max_image_height: Option<Mm>,
+
+    /// Do not rotate images
+    #[arg(long, default_value = "false")]
+    no_rotate: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -102,11 +106,20 @@ fn actual_main() -> anyhow::Result<()> {
     let max_height_px = arguments
         .max_image_height
         .map(|mm| sizes::to_px(mm, dpi).0 as u32);
+    let allow_rotation = !arguments.no_rotate;
 
     let images = arguments
         .images
         .into_iter()
-        .map(|path| ImageToPack::from_file_or_folder(path, max_width_px, max_height_px, margin_px))
+        .map(|path| {
+            ImageToPack::from_file_or_folder(
+                path,
+                max_width_px,
+                max_height_px,
+                margin_px,
+                allow_rotation,
+            )
+        })
         .collect::<anyhow::Result<Vec<_>>>()?
         .into_iter()
         .flatten()
