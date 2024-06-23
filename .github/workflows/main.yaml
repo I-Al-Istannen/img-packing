@@ -1,0 +1,43 @@
+name: build-and-release
+
+on: push
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: |
+          rustup update --no-self-update stable
+          rustup component add --toolchain stable cargo rustc
+          rustup default stable
+      - name: Build
+        run: |
+          cargo build --release
+      - name: Ls stuff
+        run: ls target/release
+
+      - name: Rename binary
+        run: mv target/release/img-packing img-packing-${{ matrix.os }}
+        if: matrix.os != 'windows-latest'
+      - name: Rename binary
+        run: mv target/release/img-packing.exe img-packing-${{ matrix.os }}.exe
+        if: matrix.os == 'windows-latest'
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        if: matrix.os != 'windows-latest'
+        with:
+          name: Binaries
+          path: img-packing-${{ matrix.os }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        if: matrix.os == 'windows-latest'
+        with:
+          name: Binaries
+          path: img-packing-${{ matrix.os }}.exe
