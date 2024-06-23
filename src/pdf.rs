@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::BufWriter;
+use std::path::Path;
 
 use crunch::PackedItem;
 use printpdf::{Image, ImageTransform, Mm, PdfDocument, PdfLayerReference, Px};
@@ -9,18 +10,19 @@ use tracing::info;
 use crate::images::ImageToPack;
 
 pub fn write_pdf(
+    path: &Path,
     images: Vec<Vec<PackedItem<ImageToPack>>>,
     width: Mm,
     height: Mm,
     border: Mm,
     dpi: u32,
-) {
+) -> anyhow::Result<()> {
     let (doc, p1, l1) = PdfDocument::new("Amalgamation", width, height, "Root");
     let mut current_layer = doc.get_page(p1).get_layer(l1);
 
     for (index, page) in images.iter().enumerate() {
         info!("Writing page {}", index + 1);
-        place_images(&current_layer, page, border, dpi).unwrap();
+        place_images(&current_layer, page, border, dpi)?;
         if index + 1 < images.len() {
             let (p, l) = doc.add_page(width, height, "Root");
             current_layer = doc.get_page(p).get_layer(l);
@@ -28,11 +30,9 @@ pub fn write_pdf(
     }
 
     info!("Saving PDF. This might take a while...");
+    doc.save(&mut BufWriter::new(File::create(path)?))?;
 
-    doc.save(&mut BufWriter::new(
-        File::create("target/test.pdf").unwrap(),
-    ))
-    .unwrap();
+    Ok(())
 }
 
 fn place_images(

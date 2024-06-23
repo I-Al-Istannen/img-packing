@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::bail;
 use clap::builder::Styles;
 use clap::builder::styling::AnsiColor;
 use clap::Parser;
@@ -28,6 +29,10 @@ const CLAP_STYLE: Styles = Styles::styled()
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None, styles = CLAP_STYLE)]
 pub struct Arguments {
+    /// The output PDF file
+    #[clap(required = true)]
+    output_pdf: PathBuf,
+
     /// The images to pack. Can be a single image or a folder containing *only* images.
     #[clap(required = true)]
     images: Vec<PathBuf>,
@@ -77,6 +82,14 @@ fn actual_main() -> anyhow::Result<()> {
         .init();
     let arguments = Arguments::parse();
 
+    // Try to prevent people accidentally overwriting their input images
+    if !arguments.output_pdf.to_string_lossy().ends_with(".pdf") {
+        bail!(
+            "Output file must have a .pdf extension. \
+            Maybe you did not pass an output file as first argument?"
+        );
+    }
+
     let dpi = arguments.dpi;
     let border_width_px = sizes::to_px(arguments.border_mm, dpi).0;
     // Margin is halved because it is applied on all images
@@ -93,9 +106,7 @@ fn actual_main() -> anyhow::Result<()> {
     let images = arguments
         .images
         .into_iter()
-        .map(|path| {
-            ImageToPack::from_file_or_folder(path, max_width_px, max_height_px, margin_px)
-        })
+        .map(|path| ImageToPack::from_file_or_folder(path, max_width_px, max_height_px, margin_px))
         .collect::<anyhow::Result<Vec<_>>>()?
         .into_iter()
         .flatten()
@@ -108,12 +119,13 @@ fn actual_main() -> anyhow::Result<()> {
 
     info!("Writing PDF");
     pdf::write_pdf(
+        &arguments.output_pdf,
         packed,
         arguments.paper_width_mm,
         arguments.paper_height_mm,
         arguments.border_mm,
         dpi,
-    );
+    )?;
 
     info!("");
     info!("Done. Have a nice day.");
