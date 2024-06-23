@@ -22,8 +22,6 @@ jobs:
       - name: Build
         run: |
           cargo build --release
-      - name: Ls stuff
-        run: ls target/release
 
       - name: Rename binary
         if: matrix.os != 'windows-latest'
