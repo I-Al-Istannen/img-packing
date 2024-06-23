@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use clap::builder::styling::AnsiColor;
 use clap::builder::Styles;
+use clap::builder::styling::AnsiColor;
 use clap::Parser;
 use crunch::PackedItem;
 use printpdf::Mm;
 use tracing::{error, info};
+use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
 
 use self::images::ImageToPack;
 use self::sizes::parse_mm;
@@ -28,7 +28,7 @@ const CLAP_STYLE: Styles = Styles::styled()
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None, styles = CLAP_STYLE)]
 pub struct Arguments {
-    /// The images to pack
+    /// The images to pack. Can be a single image or a folder containing *only* images.
     #[clap(required = true)]
     images: Vec<PathBuf>,
 
@@ -93,8 +93,13 @@ fn actual_main() -> anyhow::Result<()> {
     let images = arguments
         .images
         .into_iter()
-        .map(|path| ImageToPack::from_path(path, max_width_px, max_height_px, margin_px))
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .map(|path| {
+            ImageToPack::from_file_or_folder(path, max_width_px, max_height_px, margin_px)
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     info!("Paper size: {}x{}px @ {} DPI", width_px, height_px, dpi);
     let packed = packing::pack_images(width_px, height_px, images)?;

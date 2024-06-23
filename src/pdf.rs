@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::BufWriter;
 
 use crunch::PackedItem;
-use printpdf::image_crate::GenericImageView;
 use printpdf::{Image, ImageTransform, Mm, PdfDocument, PdfLayerReference, Px};
+use printpdf::image_crate::GenericImageView;
 use tracing::info;
 
 use crate::images::ImageToPack;

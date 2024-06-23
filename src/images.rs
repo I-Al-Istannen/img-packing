@@ -1,10 +1,11 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use crunch::{Item, Rotation};
+use printpdf::image_crate::{DynamicImage, GenericImageView};
 use printpdf::image_crate::imageops::FilterType;
 use printpdf::image_crate::io::Reader as ImageReader;
-use printpdf::image_crate::{DynamicImage, GenericImageView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageToPack {
@@ -14,7 +15,27 @@ pub struct ImageToPack {
     pub margin: u32,
 }
 impl ImageToPack {
-    pub fn from_path(
+    pub fn from_file_or_folder(
+        path: PathBuf,
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+        margin: u32,
+    ) -> anyhow::Result<Vec<Self>> {
+        if path.is_dir() {
+            std::fs::read_dir(path)?
+                .map(|entry| {
+                    let entry = entry?;
+                    let path = entry.path();
+                    Self::from_path(path.clone(), max_width, max_height, margin)
+                        .context(format!("Failed to load image from path {:?}", path))
+                })
+                .collect()
+        } else {
+            Ok(vec![Self::from_path(path, max_width, max_height, margin)?])
+        }
+    }
+
+    fn from_path(
         path: PathBuf,
         max_width: Option<u32>,
         max_height: Option<u32>,
