@@ -3,7 +3,9 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use crunch::PackedItem;
-use printpdf::{Image, ImageTransform, Mm, PdfDocument, PdfLayerReference, Px};
+use printpdf::{
+    ColorSpace, Image, ImageTransform, ImageXObject, Mm, PdfDocument, PdfLayerReference, Px,
+};
 use printpdf::image_crate::GenericImageView;
 use tracing::info;
 
@@ -57,7 +59,10 @@ fn place_images(
         if rotated {
             image = image.rotate90();
         }
-        let image = Image::from_dynamic_image(&image);
+        let mut image = Image::from_dynamic_image(&image);
+        image.image = remove_alpha_channel_from_image_x_object(image.image);
+        // Clear this as well, as it seems to make images unreadable in some viewers
+        image.image.smask = None;
 
         let transform = ImageTransform {
             translate_x: Some(Mm::from(Px(item.rect.x + margin).into_pt(dpi)) + border),
@@ -77,4 +82,41 @@ fn place_images(
 fn was_rotated((width, height): (u32, u32), rect: &crunch::Rect) -> bool {
     let width_was_larger = width > height;
     width_was_larger && rect.w <= rect.h
+}
+
+// https://github.com/fschutt/printpdf/issues/119#issuecomment-1120434233
+fn remove_alpha_channel_from_image_x_object(image_x_object: ImageXObject) -> ImageXObject {
+    if !matches!(image_x_object.color_space, ColorSpace::Rgba) {
+        return image_x_object;
+    };
+    let ImageXObject {
+        color_space,
+        image_data,
+        ..
+    } = image_x_object;
+
+    let new_image_data = image_data
+        .chunks(4)
+        .map(|rgba| {
+            let [red, green, blue, alpha]: [u8; 4] = rgba.try_into().ok().unwrap();
+            let alpha = alpha as f64 / 255.0;
+            let new_red = ((1.0 - alpha) * 255.0 + alpha * red as f64) as u8;
+            let new_green = ((1.0 - alpha) * 255.0 + alpha * green as f64) as u8;
+            let new_blue = ((1.0 - alpha) * 255.0 + alpha * blue as f64) as u8;
+            [new_red, new_green, new_blue]
+        })
+        .collect::<Vec<[u8; 3]>>()
+        .concat();
+
+    let new_color_space = match color_space {
+        ColorSpace::Rgba => ColorSpace::Rgb,
+        ColorSpace::GreyscaleAlpha => ColorSpace::Greyscale,
+        other_type => other_type,
+    };
+
+    ImageXObject {
+        color_space: new_color_space,
+        image_data: new_image_data,
+        ..image_x_object
+    }
 }
