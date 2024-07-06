@@ -3,10 +3,8 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use crunch::PackedItem;
-use printpdf::{
-    ColorSpace, Image, ImageTransform, ImageXObject, Mm, PdfDocument, PdfLayerReference, Px,
-};
-use printpdf::image_crate::GenericImageView;
+use printpdf::{Image, ImageTransform, Mm, PdfDocument, PdfLayerReference, Px};
+use printpdf::image_crate::{DynamicImage, GenericImage, GenericImageView};
 use tracing::info;
 
 use crate::images::ImageToPack;
@@ -59,8 +57,8 @@ fn place_images(
         if rotated {
             image = image.rotate90();
         }
+        image = remove_alpha_channel(image);
         let mut image = Image::from_dynamic_image(&image);
-        image.image = remove_alpha_channel_from_image_x_object(image.image);
         // Clear this as well, as it seems to make images unreadable in some viewers
         image.image.smask = None;
 
@@ -84,39 +82,25 @@ fn was_rotated((width, height): (u32, u32), rect: &crunch::Rect) -> bool {
     width_was_larger && rect.w <= rect.h
 }
 
-// https://github.com/fschutt/printpdf/issues/119#issuecomment-1120434233
-fn remove_alpha_channel_from_image_x_object(image_x_object: ImageXObject) -> ImageXObject {
-    if !matches!(image_x_object.color_space, ColorSpace::Rgba) {
-        return image_x_object;
-    };
-    let ImageXObject {
-        color_space,
-        image_data,
-        ..
-    } = image_x_object;
-
-    let new_image_data = image_data
-        .chunks(4)
-        .map(|rgba| {
-            let [red, green, blue, alpha]: [u8; 4] = rgba.try_into().ok().unwrap();
-            let alpha = alpha as f64 / 255.0;
-            let new_red = ((1.0 - alpha) * 255.0 + alpha * red as f64) as u8;
-            let new_green = ((1.0 - alpha) * 255.0 + alpha * green as f64) as u8;
-            let new_blue = ((1.0 - alpha) * 255.0 + alpha * blue as f64) as u8;
-            [new_red, new_green, new_blue]
-        })
-        .collect::<Vec<[u8; 3]>>()
-        .concat();
-
-    let new_color_space = match color_space {
-        ColorSpace::Rgba => ColorSpace::Rgb,
-        ColorSpace::GreyscaleAlpha => ColorSpace::Greyscale,
-        other_type => other_type,
-    };
-
-    ImageXObject {
-        color_space: new_color_space,
-        image_data: new_image_data,
-        ..image_x_object
+/// Removes the alpha channel from an image by blending it with a white background.
+fn remove_alpha_channel(image: DynamicImage) -> DynamicImage {
+    if let Some(rgba) = image.as_rgba8() {
+        let mut new_image = DynamicImage::new_rgb8(rgba.width(), rgba.height());
+        for (x, y, pixel) in rgba.enumerate_pixels() {
+            let rgb = rgba_to_rgb(&pixel.0);
+            new_image.put_pixel(x, y, [rgb[0], rgb[1], rgb[2], 255].into());
+        }
+        return new_image;
     }
+    image
+}
+
+fn rgba_to_rgb(rgba: &[u8]) -> [u8; 3] {
+    // Blend with white background
+    let [red, green, blue, alpha]: [u8; 4] = rgba.try_into().ok().unwrap();
+    let alpha = alpha as f64 / 255.0;
+    let new_red = ((1.0 - alpha) * 255.0 + alpha * red as f64) as u8;
+    let new_green = ((1.0 - alpha) * 255.0 + alpha * green as f64) as u8;
+    let new_blue = ((1.0 - alpha) * 255.0 + alpha * blue as f64) as u8;
+    [new_red, new_green, new_blue]
 }
